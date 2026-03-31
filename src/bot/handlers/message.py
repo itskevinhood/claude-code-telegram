@@ -1012,6 +1012,173 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         )
 
 
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle voice messages by transcribing with Groq Whisper then passing to Claude."""
+    import io
+    import tempfile
+
+    user_id = update.effective_user.id
+    settings: Settings = context.bot_data["settings"]
+    audit_logger: Optional[AuditLogger] = context.bot_data.get("audit_logger")
+    rate_limiter: Optional[RateLimiter] = context.bot_data.get("rate_limiter")
+
+    logger.info("Processing voice message", user_id=user_id)
+
+    # Check Groq API key is configured
+    if not settings.groq_api_key_str:
+        await update.message.reply_text(
+            "🎙️ <b>Voice messages not configured</b>\n\n"
+            "Add <code>GROQ_API_KEY=your_key</code> to your <code>.env</code> file.\n"
+            "Get a free key at <a href='https://console.groq.com'>console.groq.com</a>.",
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
+        return
+
+    # Rate limit check
+    if rate_limiter:
+        allowed, limit_message = await rate_limiter.check_rate_limit(user_id, 0.002)
+        if not allowed:
+            await update.message.reply_text(f"⏱️ {limit_message}")
+            return
+
+    await update.message.chat.send_action("typing")
+    progress_msg = await update.message.reply_text("🎙️ Transcribing voice message...")
+
+    try:
+        # Download the voice file from Telegram
+        voice = update.message.voice
+        tg_file = await voice.get_file()
+        audio_bytes = await tg_file.download_as_bytearray()
+
+        # Transcribe with Groq Whisper
+        try:
+            from groq import AsyncGroq
+
+            groq_client = AsyncGroq(api_key=settings.groq_api_key_str)
+            transcription = await groq_client.audio.transcriptions.create(
+                file=("voice.ogg", io.BytesIO(audio_bytes), "audio/ogg"),
+                model="whisper-large-v3-turbo",
+                response_format="text",
+            )
+            message_text = transcription.strip() if isinstance(transcription, str) else transcription.text.strip()
+        except Exception as e:
+            logger.error("Groq transcription failed", error=str(e), user_id=user_id)
+            await progress_msg.edit_text(
+                f"❌ <b>Transcription failed</b>\n\n<code>{escape_html(str(e))}</code>",
+                parse_mode="HTML",
+            )
+            return
+
+        if not message_text:
+            await progress_msg.edit_text("🎙️ Could not transcribe audio — please try again.")
+            return
+
+        # Show transcription confirmation then process with Claude
+        await progress_msg.edit_text(
+            f"🎙️ <b>Transcribed:</b> <i>{escape_html(message_text)}</i>\n\n🤔 Processing...",
+            parse_mode="HTML",
+        )
+
+        # Get Claude integration and process exactly like a text message
+        claude_integration = context.bot_data.get("claude_integration")
+        if not claude_integration:
+            await progress_msg.edit_text(
+                "❌ <b>Claude integration not available</b>", parse_mode="HTML"
+            )
+            return
+
+        current_dir = context.user_data.get("current_directory", settings.approved_directory)
+        session_id = context.user_data.get("claude_session_id")
+        force_new = bool(context.user_data.get("force_new_session"))
+
+        async def stream_handler(update_obj):
+            try:
+                progress_text = await _format_progress_update(update_obj)
+                if progress_text:
+                    await progress_msg.edit_text(progress_text, parse_mode="HTML")
+            except Exception as e:
+                logger.warning("Failed to update progress message", error=str(e))
+
+        try:
+            claude_response = await claude_integration.run_command(
+                prompt=message_text,
+                working_directory=current_dir,
+                user_id=user_id,
+                session_id=session_id,
+                on_stream=stream_handler,
+                force_new=force_new,
+            )
+
+            if force_new:
+                context.user_data["force_new_session"] = False
+
+            context.user_data["claude_session_id"] = claude_response.session_id
+            _update_working_directory_from_claude_response(
+                claude_response, context, settings, user_id
+            )
+
+            from ..utils.formatting import ResponseFormatter
+
+            formatter = ResponseFormatter(settings)
+            formatted_messages = formatter.format_claude_response(claude_response.content)
+
+        except Exception as e:
+            logger.error("Claude integration failed", error=str(e), user_id=user_id)
+            from ..utils.formatting import FormattedMessage
+
+            formatted_messages = [FormattedMessage(_format_error_message(e), parse_mode="HTML")]
+
+        await progress_msg.delete()
+
+        for i, message in enumerate(formatted_messages):
+            try:
+                await update.message.reply_text(
+                    message.text,
+                    parse_mode=message.parse_mode,
+                    reply_markup=message.reply_markup,
+                    reply_to_message_id=(update.message.message_id if i == 0 else None),
+                )
+                if i < len(formatted_messages) - 1:
+                    await asyncio.sleep(0.5)
+            except Exception as send_err:
+                logger.warning("Failed to send voice response", error=str(send_err))
+                try:
+                    await update.message.reply_text(
+                        message.text,
+                        reply_to_message_id=(update.message.message_id if i == 0 else None),
+                    )
+                except Exception:
+                    pass
+
+        context.user_data["last_message"] = message_text
+
+        if audit_logger:
+            await audit_logger.log_command(
+                user_id=user_id,
+                command="voice_message",
+                args=[message_text[:100]],
+                success=True,
+            )
+
+        logger.info("Voice message processed successfully", user_id=user_id)
+
+    except Exception as e:
+        try:
+            await progress_msg.delete()
+        except Exception:
+            pass
+        await update.message.reply_text(_format_error_message(e), parse_mode="HTML")
+        if audit_logger:
+            await audit_logger.log_command(
+                user_id=user_id,
+                command="voice_message",
+                args=[],
+                success=False,
+            )
+        logger.error("Error processing voice message", error=str(e), user_id=user_id)
+
+
 def _estimate_text_processing_cost(text: str) -> float:
     """Estimate cost for processing text message."""
     # Base cost

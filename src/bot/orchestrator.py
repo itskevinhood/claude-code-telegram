@@ -336,6 +336,12 @@ class MessageOrchestrator:
             group=10,
         )
 
+        # Voice messages -> Groq transcription -> Claude
+        app.add_handler(
+            MessageHandler(filters.VOICE, self._inject_deps(self.agentic_voice)),
+            group=10,
+        )
+
         # Only cd: callbacks (for project selection), scoped by pattern
         app.add_handler(
             CallbackQueryHandler(
@@ -386,6 +392,10 @@ class MessageOrchestrator:
         )
         app.add_handler(
             MessageHandler(filters.PHOTO, self._inject_deps(message.handle_photo)),
+            group=10,
+        )
+        app.add_handler(
+            MessageHandler(filters.VOICE, self._inject_deps(message.handle_voice)),
             group=10,
         )
         app.add_handler(
@@ -1329,6 +1339,161 @@ class MessageOrchestrator:
             logger.error(
                 "Claude photo processing failed", error=str(e), user_id=user_id
             )
+
+    async def agentic_voice(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        """Transcribe voice message with Groq Whisper then pass to Claude."""
+        import io
+
+        user_id = update.effective_user.id
+
+        logger.info("Agentic voice message", user_id=user_id)
+
+        if not self.settings.groq_api_key_str:
+            await update.message.reply_text(
+                "🎙️ <b>Voice messages not configured</b>\n\n"
+                "Add <code>GROQ_API_KEY=your_key</code> to your <code>.env</code> file.\n"
+                "Get a free key at <a href='https://console.groq.com'>console.groq.com</a>.",
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+            )
+            return
+
+        rate_limiter = context.bot_data.get("rate_limiter")
+        if rate_limiter:
+            allowed, limit_message = await rate_limiter.check_rate_limit(user_id, 0.002)
+            if not allowed:
+                await update.message.reply_text(f"⏱️ {limit_message}")
+                return
+
+        chat = update.message.chat
+        await chat.send_action("typing")
+        progress_msg = await update.message.reply_text("🎙️ Transcribing...")
+
+        try:
+            voice = update.message.voice
+            tg_file = await voice.get_file()
+            audio_bytes = await tg_file.download_as_bytearray()
+
+            try:
+                from groq import AsyncGroq
+
+                groq_client = AsyncGroq(api_key=self.settings.groq_api_key_str)
+                transcription = await groq_client.audio.transcriptions.create(
+                    file=("voice.ogg", io.BytesIO(audio_bytes), "audio/ogg"),
+                    model="whisper-large-v3-turbo",
+                    response_format="text",
+                )
+                message_text = (
+                    transcription.strip()
+                    if isinstance(transcription, str)
+                    else transcription.text.strip()
+                )
+            except Exception as e:
+                logger.error("Groq transcription failed", error=str(e), user_id=user_id)
+                from .handlers.message import _format_error_message
+
+                await progress_msg.edit_text(
+                    f"❌ <b>Transcription failed</b>\n\n<code>{escape_html(str(e))}</code>",
+                    parse_mode="HTML",
+                )
+                return
+
+            if not message_text:
+                await progress_msg.edit_text(
+                    "🎙️ Could not transcribe audio — please try again."
+                )
+                return
+
+            await progress_msg.edit_text(
+                f"🎙️ <b>Transcribed:</b> <i>{escape_html(message_text)}</i>\n\nWorking...",
+                parse_mode="HTML",
+            )
+
+            claude_integration = context.bot_data.get("claude_integration")
+            if not claude_integration:
+                await progress_msg.edit_text(
+                    "Claude integration not available. Check configuration."
+                )
+                return
+
+            current_dir = context.user_data.get(
+                "current_directory", self.settings.approved_directory
+            )
+            session_id = context.user_data.get("claude_session_id")
+            force_new = bool(context.user_data.get("force_new_session"))
+
+            verbose_level = self._get_verbose_level(context)
+            tool_log: List[Dict[str, Any]] = []
+            mcp_images_voice: List[ImageAttachment] = []
+            on_stream = self._make_stream_callback(
+                verbose_level,
+                progress_msg,
+                tool_log,
+                time.time(),
+                mcp_images=mcp_images_voice,
+                approved_directory=self.settings.approved_directory,
+            )
+
+            heartbeat = self._start_typing_heartbeat(chat)
+            try:
+                claude_response = await claude_integration.run_command(
+                    prompt=message_text,
+                    working_directory=current_dir,
+                    user_id=user_id,
+                    session_id=session_id,
+                    on_stream=on_stream,
+                    force_new=force_new,
+                )
+            finally:
+                heartbeat.cancel()
+
+            if force_new:
+                context.user_data["force_new_session"] = False
+
+            context.user_data["claude_session_id"] = claude_response.session_id
+
+            from .utils.formatting import ResponseFormatter
+
+            formatter = ResponseFormatter(self.settings)
+            formatted_messages = formatter.format_claude_response(claude_response.content)
+
+            try:
+                await progress_msg.delete()
+            except Exception:
+                pass
+
+            for i, message in enumerate(formatted_messages):
+                try:
+                    await update.message.reply_text(
+                        message.text,
+                        parse_mode=message.parse_mode,
+                        reply_markup=None,
+                        reply_to_message_id=(
+                            update.message.message_id if i == 0 else None
+                        ),
+                    )
+                    if i < len(formatted_messages) - 1:
+                        await asyncio.sleep(0.5)
+                except Exception as send_err:
+                    logger.warning("Failed to send voice response", error=str(send_err))
+
+            if mcp_images_voice:
+                try:
+                    await self._send_images(
+                        update,
+                        mcp_images_voice,
+                        reply_to_message_id=update.message.message_id,
+                    )
+                except Exception as img_err:
+                    logger.warning("Image send failed", error=str(img_err))
+
+        except Exception as e:
+            from .handlers.message import _format_error_message
+
+            await progress_msg.edit_text(_format_error_message(e), parse_mode="HTML")
+            logger.error("Voice message processing failed", error=str(e), user_id=user_id)
 
     async def agentic_repo(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE

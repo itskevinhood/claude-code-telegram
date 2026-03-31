@@ -139,6 +139,7 @@ class ClaudeSDKManager:
 
         # Set up environment for Claude Code SDK if API key is provided
         # If no API key is provided, the SDK will use existing CLI authentication
+        os.environ.pop("CLAUDECODE", None)
         if config.anthropic_api_key_str:
             os.environ["ANTHROPIC_API_KEY"] = config.anthropic_api_key_str
             logger.info("Using provided API key for Claude SDK authentication")
@@ -162,6 +163,10 @@ class ClaudeSDKManager:
             session_id=session_id,
             continue_session=continue_session,
         )
+
+        # Clear CLAUDECODE so the subprocess isn't rejected as a nested session.
+        # The SDK (or a previous run) may have re-set this after __init__ cleared it.
+        os.environ.pop("CLAUDECODE", None)
 
         try:
             # Capture stderr from Claude CLI for better error diagnostics

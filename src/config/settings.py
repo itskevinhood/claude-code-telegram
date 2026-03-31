@@ -74,6 +74,10 @@ class Settings(BaseSettings):
         None,
         description="Anthropic API key for SDK (optional if CLI logged in)",
     )
+    groq_api_key: Optional[SecretStr] = Field(
+        None,
+        description="Groq API key for voice message transcription (get one free at console.groq.com)",
+    )
     claude_model: str = Field(
         "claude-3-5-sonnet-20241022", description="Claude model to use"
     )
@@ -431,5 +435,14 @@ class Settings(BaseSettings):
         return (
             self.anthropic_api_key.get_secret_value()
             if self.anthropic_api_key
+            else None
+        )
+
+    @property
+    def groq_api_key_str(self) -> Optional[str]:
+        """Get Groq API key as string."""
+        return (
+            self.groq_api_key.get_secret_value()
+            if self.groq_api_key
             else None
         )
