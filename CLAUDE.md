@@ -2,6 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Fork Info
+
+This is a fork of [RichardAtCT/claude-code-telegram](https://github.com/RichardAtCT/claude-code-telegram).
+
+- `origin` → `itskevinhood/claude-code-telegram` (this fork)
+- `upstream` → `RichardAtCT/claude-code-telegram` (Richard's original)
+
+To pull Richard's future updates: `git fetch upstream` then merge selectively.
+
+## Local Customizations
+
+- **Groq voice transcription** — voice messages are transcribed via Groq Whisper (`GROQ_API_KEY` in `.env`). Implementation in `src/bot/handlers/message.py` (`handle_voice`) and `src/config/settings.py` (`groq_api_key`). Get a free key at https://console.groq.com.
+
 ## Project Overview
 
 Telegram bot providing remote access to Claude Code. Python 3.10+, built with Poetry, using `python-telegram-bot` for Telegram and `claude-agent-sdk` for Claude Code integration.
