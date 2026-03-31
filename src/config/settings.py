@@ -441,8 +441,4 @@ class Settings(BaseSettings):
     @property
     def groq_api_key_str(self) -> Optional[str]:
         """Get Groq API key as string."""
-        return (
-            self.groq_api_key.get_secret_value()
-            if self.groq_api_key
-            else None
-        )
+        return self.groq_api_key.get_secret_value() if self.groq_api_key else None

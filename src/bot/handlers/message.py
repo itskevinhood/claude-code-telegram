@@ -1061,7 +1061,11 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 model="whisper-large-v3-turbo",
                 response_format="text",
             )
-            message_text = transcription.strip() if isinstance(transcription, str) else transcription.text.strip()
+            message_text = (
+                transcription.strip()
+                if isinstance(transcription, str)
+                else transcription.text.strip()
+            )
         except Exception as e:
             logger.error("Groq transcription failed", error=str(e), user_id=user_id)
             await progress_msg.edit_text(
@@ -1071,7 +1075,9 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             return
 
         if not message_text:
-            await progress_msg.edit_text("🎙️ Could not transcribe audio — please try again.")
+            await progress_msg.edit_text(
+                "🎙️ Could not transcribe audio — please try again."
+            )
             return
 
         # Show transcription confirmation then process with Claude
@@ -1088,7 +1094,9 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             )
             return
 
-        current_dir = context.user_data.get("current_directory", settings.approved_directory)
+        current_dir = context.user_data.get(
+            "current_directory", settings.approved_directory
+        )
         session_id = context.user_data.get("claude_session_id")
         force_new = bool(context.user_data.get("force_new_session"))
 
@@ -1121,13 +1129,17 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             from ..utils.formatting import ResponseFormatter
 
             formatter = ResponseFormatter(settings)
-            formatted_messages = formatter.format_claude_response(claude_response.content)
+            formatted_messages = formatter.format_claude_response(
+                claude_response.content
+            )
 
         except Exception as e:
             logger.error("Claude integration failed", error=str(e), user_id=user_id)
             from ..utils.formatting import FormattedMessage
 
-            formatted_messages = [FormattedMessage(_format_error_message(e), parse_mode="HTML")]
+            formatted_messages = [
+                FormattedMessage(_format_error_message(e), parse_mode="HTML")
+            ]
 
         await progress_msg.delete()
 
@@ -1146,7 +1158,9 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 try:
                     await update.message.reply_text(
                         message.text,
-                        reply_to_message_id=(update.message.message_id if i == 0 else None),
+                        reply_to_message_id=(
+                            update.message.message_id if i == 0 else None
+                        ),
                     )
                 except Exception:
                     pass

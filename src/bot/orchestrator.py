@@ -1457,7 +1457,9 @@ class MessageOrchestrator:
             from .utils.formatting import ResponseFormatter
 
             formatter = ResponseFormatter(self.settings)
-            formatted_messages = formatter.format_claude_response(claude_response.content)
+            formatted_messages = formatter.format_claude_response(
+                claude_response.content
+            )
 
             try:
                 await progress_msg.delete()
@@ -1493,7 +1495,9 @@ class MessageOrchestrator:
             from .handlers.message import _format_error_message
 
             await progress_msg.edit_text(_format_error_message(e), parse_mode="HTML")
-            logger.error("Voice message processing failed", error=str(e), user_id=user_id)
+            logger.error(
+                "Voice message processing failed", error=str(e), user_id=user_id
+            )
 
     async def agentic_repo(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
