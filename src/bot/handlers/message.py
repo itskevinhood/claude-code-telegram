@@ -1015,7 +1015,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle voice messages by transcribing with Groq Whisper then passing to Claude."""
     import io
-    import tempfile
 
     user_id = update.effective_user.id
     settings: Settings = context.bot_data["settings"]
