@@ -135,3 +135,24 @@ Agentic mode commands: `/start`, `/new`, `/status`, `/verbose`, `/repo`. If `ENA
 2. Register in `MessageOrchestrator._register_classic_handlers()`
 3. Add to `MessageOrchestrator.get_bot_commands()` for Telegram's command menu
 4. Add audit logging for the command
+
+## Fork Info
+
+This is Kevin's fork of [RichardAtCT/claude-code-telegram](https://github.com/RichardAtCT/claude-code-telegram).
+
+### Remotes
+
+- `origin` — `https://github.com/itskevinhood/claude-code-telegram.git` (this fork)
+- `upstream` — `https://github.com/RichardAtCT/claude-code-telegram.git` (original)
+
+### Local Customizations
+
+- **CLAUDECODE env var fix** (`src/claude/sdk_integration.py`): Pops `CLAUDECODE` from the environment during `ClaudeSDKManager.__init__` to prevent the SDK subprocess from being rejected as a nested Claude session (e.g. when starting the bot from a Claude Code terminal).
+
+### Pulling Upstream Updates
+
+```bash
+git fetch upstream
+git log HEAD..upstream/main --oneline   # review new commits
+git merge upstream/main                 # or rebase
+```

@@ -250,6 +250,10 @@ class ClaudeSDKManager:
         self.config = config
         self.security_validator = security_validator
 
+        # Prevent the SDK subprocess from being rejected as a nested Claude
+        # session (e.g. when the bot is started from within a Claude Code terminal).
+        os.environ.pop("CLAUDECODE", None)
+
         # Set up environment for Claude Code SDK if API key is provided
         # If no API key is provided, the SDK will use existing CLI authentication
         if config.anthropic_api_key_str:
