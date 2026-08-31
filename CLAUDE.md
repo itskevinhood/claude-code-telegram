@@ -2,6 +2,24 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**Where things are and what to read for a task: [`CONTEXT.md`](CONTEXT.md).**
+
+## 🚫 The venv trap — read before changing dependencies
+
+**This project has TWO virtualenvs.** The live service runs the poetry venv
+`~/.cache/pypoetry/virtualenvs/claude-code-telegram-ny9yruGr-py3.11`, which is what
+`claude-telegram-bot.service` executes. A second poetry env (`RherOb47`) also
+exists. A dependency change applied to only one of them **will not reach the
+running bot**, and the failure is silent — the old code just keeps running.
+
+After changing dependencies, confirm which env the unit actually uses:
+
+```bash
+systemctl show claude-telegram-bot -p ExecStart
+```
+
+Also: **run `poetry run black src/` before committing** or CI fails.
+
 ## Project Overview
 
 Telegram bot providing remote access to Claude Code. Python 3.10+, built with Poetry, using `python-telegram-bot` for Telegram and `claude-agent-sdk` for Claude Code integration.
