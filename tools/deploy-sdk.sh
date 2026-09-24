@@ -24,7 +24,7 @@ if [ "${1:-}" = "--restart" ]; then
   sudo systemctl restart "$SERVICE"
   sleep 20
   if systemctl is-active -q "$SERVICE"; then
-    notify "✅ Bolt restarted on claude-agent-sdk $(live_version). Ask me 'what model are you?' to confirm."
+    notify "✅ Bolt restarted on claude-agent-sdk $(live_version). Send /new first — a resumed session keeps the model it started on — then ask 'what model are you?'."
   else
     notify "❌ Bolt failed to come back after the SDK deploy. Check: journalctl -u $SERVICE -n 50"
   fi
