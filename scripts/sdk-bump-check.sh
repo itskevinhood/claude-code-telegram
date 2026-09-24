@@ -31,6 +31,8 @@ notify() {
 }
 
 cd "$REPO" || exit 1
+# Cron's PATH resolves python3 to the system 3.10; pin poetry to its 3.11 env.
+poetry env use -q /usr/bin/python3.11 || { notify "⚠️ sdk-bump-check: poetry env unavailable. Log: $LOG"; exit 1; }
 PY="$(poetry env info -p)/bin/python"
 locked() { "$PY" -c 'import tomllib;print(next(p["version"] for p in tomllib.load(open("poetry.lock","rb"))["package"] if p["name"]=="claude-agent-sdk"))'; }
 
