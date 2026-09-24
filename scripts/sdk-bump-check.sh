@@ -76,7 +76,7 @@ from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 import inspect; assert "_query" in inspect.getsource(ClaudeSDKClient)
 ClaudeAgentOptions(effort="medium")' || fail "SDK internals changed"
 
-TESTS="$(poetry run pytest -q -p no:cacheprovider --no-cov 2>&1 | tail -1)"
+TESTS="$(poetry run pytest -q -p no:cacheprovider --no-cov 2>&1 | tail -1 | tr -d "=" | xargs)"
 echo "$TESTS"
 echo "$TESTS" | grep -q "passed" && ! echo "$TESTS" | grep -qE "failed|error" || fail "tests: $TESTS"
 
