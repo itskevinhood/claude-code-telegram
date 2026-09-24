@@ -1,6 +1,6 @@
 # Self-heal roadmap — alerts Bolt can read, triage, and fix
 
-**Status:** planned, nothing built past Phase 0. Written 2026-09-24.
+**Status:** Phase 0 and 1 shipped, plus the watchdog; Phase 2 is next. Written 2026-09-24.
 
 **Goal:** every error that reaches Bolt gets diagnosed. If it can be fixed safely
 without Kevin, Bolt fixes it and reports what it did. If it can't, Bolt posts
@@ -56,7 +56,7 @@ SDK 0.2.159 (bundled Claude Code 2.1.281), the `CLAUDE_EFFORT` setting, and the
 weekly `scripts/sdk-bump-check.sh`. With `CLAUDE_MODEL` unset, the CLI's default
 model is `claude-opus-5-5`.
 
-### Phase 1 — Replies carry the alert (small, standalone)
+### Phase 1 — Replies carry the alert ✅ (2026-09-24)
 
 When a message is a reply, put the replied-to message into the prompt (text or
 caption, author, timestamp) as quoted context. Kevin replies "what's wrong?" to any

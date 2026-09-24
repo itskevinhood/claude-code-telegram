@@ -127,6 +127,32 @@ class ActiveRequest:
     progress_msg: Any = None  # telegram Message object
 
 
+REPLY_CONTEXT_MAX_CHARS = 4000
+
+
+def _with_reply_context(message: Any, text: Optional[str]) -> str:
+    """Prefix the message being replied to, so replying to an alert gives Claude the alert.
+
+    Telegram never delivers a bot's own messages (e.g. job alerts sent with Bolt's
+    token) as updates, but it does include them as ``reply_to_message``.
+    """
+    text = text or ""
+    replied = getattr(message, "reply_to_message", None)
+    if replied is None:
+        return text
+    quoted = replied.text or replied.caption or ""
+    if not quoted:
+        return text
+    if len(quoted) > REPLY_CONTEXT_MAX_CHARS:
+        quoted = quoted[:REPLY_CONTEXT_MAX_CHARS] + "\n[…truncated]"
+    author = getattr(replied.from_user, "first_name", None) or "unknown"
+    sent = replied.date.isoformat() if replied.date else "unknown time"
+    return (
+        f"[Replying to a message from {author}, sent {sent}:]\n"
+        f"<replied_message>\n{quoted}\n</replied_message>\n\n{text}"
+    )
+
+
 class MessageOrchestrator:
     """Routes messages based on mode. Single entry point for all Telegram updates."""
 
@@ -1007,7 +1033,7 @@ class MessageOrchestrator:
         success = True
         try:
             claude_response = await claude_integration.run_command(
-                prompt=message_text,
+                prompt=_with_reply_context(update.message, message_text),
                 working_directory=current_dir,
                 user_id=user_id,
                 session_id=session_id,
