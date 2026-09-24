@@ -215,6 +215,7 @@ async def run_application(app: Dict[str, Any]) -> None:
     event_bus: EventBus = app["event_bus"]
 
     notification_service: Optional[NotificationService] = None
+    triage_worker: Any = None
     scheduler: Optional[JobScheduler] = None
     project_threads_manager: Optional[ProjectThreadManager] = None
 
@@ -289,6 +290,14 @@ async def run_application(app: Dict[str, Any]) -> None:
         notification_service.register()
         await notification_service.start()
 
+        # Alert triage (self-heal Phase 3). Runs outside `tasks` on purpose: the
+        # worker never raises, and nothing it does should end the application.
+        if config.enable_alert_triage:
+            from src.triage.worker import TriageWorker
+
+            triage_worker = TriageWorker(config, telegram_bot)
+            await triage_worker.start()
+
         # Collect concurrent tasks
         tasks = []
 
@@ -352,6 +361,8 @@ async def run_application(app: Dict[str, Any]) -> None:
         logger.info("Shutting down application")
 
         try:
+            if triage_worker:
+                await triage_worker.stop()
             if scheduler:
                 await scheduler.stop()
             if notification_service:

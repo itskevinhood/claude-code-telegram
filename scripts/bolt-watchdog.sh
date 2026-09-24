@@ -16,9 +16,10 @@ LAST_RESTARTS="$STATE/watchdog-restarts"
 mkdir -p "$STATE"
 
 # notify SEVERITY SUMMARY [DETAILS] [EMOJI] — via ~/bin/bolt-alert (docs/conventions/alerts.md).
+# --heal never: Bolt cannot triage alerts about itself.
 # MONITOR_DRY_RUN=1 is honored by bolt-alert itself.
 notify() {
-  /home/ubuntu/bin/bolt-alert --job claude-code-telegram --severity "$1" --summary "$2" \
+  /home/ubuntu/bin/bolt-alert --job claude-code-telegram --severity "$1" --summary "$2" --heal never \
     ${3:+--details "$3"} ${4:+--emoji "$4"} \
     || echo "$(date -Is) bolt-alert failed" >&2
 }

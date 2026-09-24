@@ -12,9 +12,10 @@ LIVE_VENV=/home/ubuntu/.cache/pypoetry/virtualenvs/claude-code-telegram-ny9yruGr
 SERVICE=claude-telegram-bot
 
 # notify SEVERITY SUMMARY [DETAILS] [EMOJI] — via ~/bin/bolt-alert (docs/conventions/alerts.md).
+# --heal never: Bolt cannot triage alerts about itself.
 # MONITOR_DRY_RUN=1 is honored by bolt-alert itself.
 notify() {
-  /home/ubuntu/bin/bolt-alert --job claude-code-telegram --severity "$1" --summary "$2" \
+  /home/ubuntu/bin/bolt-alert --job claude-code-telegram --severity "$1" --summary "$2" --heal never \
     --log "/home/ubuntu/claude-code-telegram/state/sdk-bump-check.log" ${3:+--details "$3"} ${4:+--emoji "$4"} \
     || echo "$(date -Is) bolt-alert failed" >&2
 }

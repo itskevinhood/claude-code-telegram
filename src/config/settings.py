@@ -311,6 +311,42 @@ class Settings(BaseSettings):
     notification_chat_ids: Optional[List[int]] = Field(
         None, description="Default Telegram chat IDs for proactive notifications"
     )
+
+    # Alert triage (self-heal Phase 3, docs/self-heal-roadmap.md): Bolt diagnoses
+    # alerts that ~/bin/bolt-alert drops into a local queue, read-only.
+    enable_alert_triage: bool = Field(
+        True, description="Diagnose queued bolt-alert events and reply in the thread"
+    )
+    triage_queue_dir: Path = Field(
+        Path.home() / "state" / "bolt-triage-queue",
+        description="Directory bolt-alert enqueues events into",
+    )
+    triage_db_path: Path = Field(
+        Path("data/triage.db"), description="SQLite file for triage records"
+    )
+    triage_effort: Literal["low", "medium", "high", "xhigh", "max"] = Field(
+        "medium", description="Reasoning effort for triage sessions"
+    )
+    triage_daily_budget_usd: float = Field(
+        5.0, description="Daily cap on triage API-equivalent cost (SDK estimate)"
+    )
+    triage_max_cost_per_run: float = Field(
+        1.0, description="Per-triage API-equivalent cost cap"
+    )
+    triage_pause_utilization: float = Field(
+        0.7, description="Pause triage when any plan usage window reaches this"
+    )
+    triage_max_turns: int = Field(25, description="Max turns per triage session")
+    triage_timeout_seconds: int = Field(600, description="Timeout per triage")
+    triage_max_age_hours: float = Field(
+        3.0, description="Skip alerts older than this (e.g. queued while Bolt was down)"
+    )
+    triage_cooldown_hours: float = Field(
+        6.0, description="Don't re-triage the same fingerprint within this window"
+    )
+    triage_min_available_mb: int = Field(
+        700, description="Wait to triage while available RAM is below this"
+    )
     enable_project_threads: bool = Field(
         False,
         description="Enable strict routing by Telegram forum project threads",

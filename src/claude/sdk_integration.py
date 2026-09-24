@@ -19,6 +19,7 @@ from claude_agent_sdk import (
     PermissionResultAllow,
     PermissionResultDeny,
     ProcessError,
+    RateLimitEvent,
     ResultMessage,
     TextBlock,
     ThinkingBlock,
@@ -32,6 +33,7 @@ from claude_agent_sdk.types import StreamEvent
 
 from ..config.settings import Settings
 from ..security.validators import SecurityValidator
+from ..triage.usage import usage_tracker
 from .exceptions import (
     ClaudeMCPError,
     ClaudeParsingError,
@@ -423,6 +425,10 @@ class ClaudeSDKManager:
                             continue
 
                         messages.append(message)
+
+                        if isinstance(message, RateLimitEvent):
+                            # Plan-usage reading for the triage pause gate.
+                            usage_tracker.record(message.rate_limit_info)
 
                         if isinstance(message, ResultMessage):
                             break

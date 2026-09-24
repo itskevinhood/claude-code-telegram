@@ -93,6 +93,27 @@ RATE_LIMIT_WINDOW=60
 RATE_LIMIT_BURST=20
 ```
 
+#### Alert Triage
+
+Bolt diagnoses warn/error alerts that `~/bin/bolt-alert` drops into
+`~/state/bolt-triage-queue/`, in a separate, read-only Claude session, and replies
+in the alert's Telegram thread. Design, gates and security model:
+`docs/self-heal-roadmap.md` (Phase 3). Code: `src/triage/`.
+
+```bash
+# Alert triage (docs/self-heal-roadmap.md, Phase 3). On by default: Bolt diagnoses
+# warn/error alerts that ~/bin/bolt-alert queues, read-only, and replies in the
+# alert's thread. Budgets are API-equivalent estimates (Bolt runs on the Max plan).
+# ENABLE_ALERT_TRIAGE=false
+# TRIAGE_EFFORT=medium
+# TRIAGE_DAILY_BUDGET_USD=5
+# TRIAGE_MAX_COST_PER_RUN=1
+# TRIAGE_PAUSE_UTILIZATION=0.7     # pause when any plan usage window reaches 70%
+# TRIAGE_MAX_AGE_HOURS=3           # skip alerts queued while Bolt was down longer
+# TRIAGE_COOLDOWN_HOURS=6          # don't re-triage the same fingerprint
+# TRIAGE_MIN_AVAILABLE_MB=700      # wait while free RAM is below this
+```
+
 #### Storage & Database
 
 ```bash

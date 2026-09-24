@@ -1,6 +1,6 @@
 # Self-heal roadmap — alerts Bolt can read, triage, and fix
 
-**Status:** Phases 0–2 shipped, plus the watchdog; Phase 3 is next (switch to high effort first). Written 2026-09-24.
+**Status:** Phases 0–3 built (3 goes live on the next bot restart), plus the watchdog; Phase 4 is next. Written 2026-09-24.
 
 **Goal:** every error that reaches Bolt gets diagnosed. If it can be fixed safely
 without Kevin, Bolt fixes it and reports what it did. If it can't, Bolt posts
@@ -68,6 +68,11 @@ alert and Bolt investigates with the alert in hand. No notifier changes needed.
 
 ### Phase 2 — One alert contract, one sender ✅ (2026-09-24)
 
+> **Deferred cleanup (Kevin, 2026-09-24):** once the new alerts have proven themselves
+> in production, remove the now-unused `TELEGRAM_*` lines from the real `.env` files of
+> ghl-contact-backup, sync-email-metrics-to-notion, threads-sync and fathom-to-notion,
+> and delete weekly-security-audit's `.env`. Kevin edits those; Claude never opens them.
+
 Shipped as `~/bin/bolt-alert` + `~/docs/conventions/alerts.md`. Every sender in the
 inventory below now calls it; no job loads a Telegram token. `fathom-to-notion` goes
 live on its next service restart. History is kept in `~/state/alerts.jsonl`. The design
@@ -103,41 +108,48 @@ their own `.env`.
   jobs alert through the shared sender, never a copied notifier", and the
   `feedback_shared_bolt_token` memory is updated to match.
 
-### Phase 3 — Triage: alert in, diagnosis out
+### Phase 3 — Triage: alert in, diagnosis out ✅ built 2026-09-24 (at high effort)
 
-> ⚠️ **Before starting Phase 3: remind Kevin to switch the Claude session to high effort**
-> (Phases 0–2 ran at medium). Kevin asked for this reminder on 2026-09-24.
+**How it works.** `bolt-alert` sends the alert, then (for `warn`/`error` with
+`heal != never`) drops the event, including the Telegram message ID, into
+`~/state/bolt-triage-queue/`. Bolt's `TriageWorker` (`src/triage/`) claims one file at
+a time, runs a **separate, read-only Claude session** (never Kevin's chat session),
+and replies to the alert's message with `🩺 Triage`: a verdict line (✅ Transient /
+🔧 Fix available / 🙋 Needs you), likely cause, confidence, evidence, and up to 3 options.
+Rows live in `data/triage.db` (own file, not the bot DB), with `session_id` and
+`triage_message_id` stored for Phase 4.
 
-Turn on the bot's API server (bound to 127.0.0.1, Bearer secret, never exposed via
-nginx) and add an `alerts` provider:
+**Changed from the plan: a queue folder instead of the HTTP API server.** No port,
+no Bearer secret for Kevin to set, and alerts sent while Bolt is down wait in the
+folder (skipped as stale after 3 h). Deleting the folder stops queueing.
 
-- **An `alerts` table** in the bot's SQLite: event, fingerprint, Telegram message
-  ID of the alert, triage message ID, Claude session ID, status
-  (`new → triaging → awaiting-kevin | fixed | dismissed`).
-- **A dedicated session per alert**, never the default user+directory session.
-  This fixes the upstream behavior described above.
-- **Triage runs read-only:** read logs, `systemctl status`, `git log`, curl health
-  endpoints. No Edit/Write, no restarts. The prompt is built from the event plus
-  the job's `CONTEXT.md`/runbook.
-- **Output is posted as a reply to the original alert:** likely cause, confidence,
-  and one of: *transient, no action* / *fix available* (Phase 5) / *needs you* with
-  2–3 concrete options.
-- **Guardrails for this box:**
-  - One triage at a time, queued. The box has 3.7 GB and a history of OOM.
-  - A fingerprint cooldown, so a flapping cron triggers one triage, not fifty.
-  - **Metered against Kevin's Max plan, not an API bill** (Bolt runs on OAuth). Two meters:
-    - *API-equivalent cost*: the SDK reports `total_cost_usd` on every run even on a
-      subscription, and the bot already stores it per day (`cost_tracking`). Cap: **$5/day
-      equivalent** for triage.
-    - *Plan headroom*: the SDK's `RateLimitEvent` carries `utilization` (0–1) and an
-      `allowed_warning` status for the plan's usage windows. **Pause triage at ≥ 70%
-      utilization or on any warning**, so alerts never eat the quota Kevin uses interactively.
-      Paused alerts still arrive, marked "triage paused (usage)".
-  - `CLAUDE_EFFORT=low` or `medium` for triage.
-- Deploy: bot restart, plus a new `.env` secret that Kevin sets.
-- Docs: this repo's `CONTEXT.md` + `docs/configuration.md` (new env vars),
-  `~/CONTEXT.md` (Bolt now has an ingress on 127.0.0.1:8080), `~/CLAUDE.md`
-  "expected processes" (triage sessions are normal Claude traffic).
+**Gates (in order):** info or `heal: never` → skipped · older than 3 h → stale ·
+same fingerprint triaged in the last 6 h → a short "same issue" reply · spend today at
+or above **$5 API-equivalent** → paused · any plan usage window at or above **70%**, or a
+usage warning → paused (paused alerts get at most one ⏸ note per hour per reason) ·
+free RAM under 700 MB → the queue waits. The watchdog and deploy alerts are
+`heal: never` (Bolt can't triage itself).
+
+**Plan-usage meter:** every Claude run in the bot (chats and triage) records the
+SDK's `RateLimitEvent`. Its raw `unifiedWindows` give real 5-hour and 7-day
+utilization on OAuth (verified: 10% / 37% on 2026-09-24).
+
+**Security model (verified live 2026-09-24 with fake secrets and prompt injection):**
+- Without extra rules, Claude Code auto-approves commands it considers read-only,
+  and `grep -r` or globs (`.e*`) then read denied `.env` files. So the triage
+  settings add `ask` rules that send **every** Bash/Read/Glob/Grep call to our
+  deny-by-default `can_use_tool` (`src/triage/policy.py`): a read-only command
+  allowlist, no recursion/globs/redirects/variables, `cd`-aware secret-path checks,
+  and `ps` without its env-printing `e` form.
+- Deny rules for secret paths (`.env`, tokens, `~/.config/bolt`, `/etc/whoop-mcp`,
+  `/proc`, keys) plus `env`/`printenv`/`sudo`.
+- No settings files are loaded (`~/.claude/settings.json` auto-allows `python3 -c`);
+  no Write/Edit/Task/WebFetch/WebSearch; secret-looking env vars are blanked for the
+  subprocess.
+- Result: a cooperative "run these" test and a prompt-injection alert leaked nothing.
+  A real triage of the swap warning took 14 s and $0.27.
+
+**Deploy:** a bot restart (Kevin says go). Settings: `docs/configuration.md` → Alert Triage.
 
 ### Phase 4 — Kevin answers in the thread
 

@@ -13,6 +13,7 @@ alert channel every other job on this box reports failures to. Runs as the
 | `src/config/` | Pydantic settings, feature flags |
 | `src/security/` | Auth, rate limiting, the tool allowlist |
 | `src/storage/` | SQLite persistence |
+| `src/triage/` | Alert triage (self-heal Phase 3): queue worker, read-only tool policy, runner, store (`data/triage.db`) |
 | `src/scheduler/`, `src/notifications/`, `src/events/`, `src/mcp/`, `src/api/`, `src/projects/`, `src/utils/` | Supporting subsystems |
 | `docs/` | Full documentation set → `docs/CONTEXT.md` |
 | `tests/` | `poetry run pytest` |
@@ -29,6 +30,7 @@ alert channel every other job on this box reports failures to. Runs as the
 | Local dev, tests, linting | `docs/development.md` |
 | Change the bot's model / effort | `CLAUDE_MODEL` / `CLAUDE_EFFORT` in `.env` (Kevin sets it; see `.env.example`). Unset = the bundled CLI's default. The bot ignores `~/.claude/settings.json` |
 | Update the SDK / bundled Claude Code CLI | automatic weekly check (`scripts/`), then `tools/deploy-sdk.sh` once Kevin says go. Afterwards `/new` in Telegram: resumed sessions keep the model they started on |
+| Why an alert got (or didn't get) a 🩺 Triage reply | `data/triage.db` (`alert_triage.status`), `journalctl -u claude-telegram-bot \| grep -i triage`; gates in `docs/self-heal-roadmap.md` Phase 3 |
 | Make alerts triage / self-heal | `docs/self-heal-roadmap.md` — phased plan, alert-sender inventory |
 | Triage an alert from Telegram | Reply to it: `_with_reply_context` (`src/bot/orchestrator.py`) passes the replied-to message to Claude |
 | Why an alert didn't arrive | this bot is the alert *channel*; check the sending job's log first |
