@@ -16,7 +16,7 @@ alert channel every other job on this box reports failures to. Runs as the
 | `src/scheduler/`, `src/notifications/`, `src/events/`, `src/mcp/`, `src/api/`, `src/projects/`, `src/utils/` | Supporting subsystems |
 | `docs/` | Full documentation set → `docs/CONTEXT.md` |
 | `tests/` | `poetry run pytest` |
-| `scripts/` | Cron-run. `sdk-bump-check.sh` — Tue 14:40 UTC, tests the newest `claude-agent-sdk` and commits the bump |
+| `scripts/` | Cron-run. `sdk-bump-check.sh` — Tue 14:40 UTC, tests the newest `claude-agent-sdk` and commits the bump. `bolt-watchdog.sh` — every 5 min, alerts via the Bot API if this bot is down 10+ min |
 | `tools/` | Manual only. `deploy-sdk.sh` — installs the locked SDK into the live venv and restarts the bot (Kevin-approved) |
 | `state/` | Gitignored runtime state + `sdk-bump-check.log` |
 

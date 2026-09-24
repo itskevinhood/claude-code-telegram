@@ -117,7 +117,14 @@ nginx) and add an `alerts` provider:
 - **Guardrails for this box:**
   - One triage at a time, queued. The box has 3.7 GB and a history of OOM.
   - A fingerprint cooldown, so a flapping cron triggers one triage, not fifty.
-  - A daily triage cost cap (`max_budget_usd` already exists per request).
+  - **Metered against Kevin's Max plan, not an API bill** (Bolt runs on OAuth). Two meters:
+    - *API-equivalent cost*: the SDK reports `total_cost_usd` on every run even on a
+      subscription, and the bot already stores it per day (`cost_tracking`). Cap: **$5/day
+      equivalent** for triage.
+    - *Plan headroom*: the SDK's `RateLimitEvent` carries `utilization` (0–1) and an
+      `allowed_warning` status for the plan's usage windows. **Pause triage at ≥ 70%
+      utilization or on any warning**, so alerts never eat the quota Kevin uses interactively.
+      Paused alerts still arrive, marked "triage paused (usage)".
   - `CLAUDE_EFFORT=low` or `medium` for triage.
 - Deploy: bot restart, plus a new `.env` secret that Kevin sets.
 - Docs: this repo's `CONTEXT.md` + `docs/configuration.md` (new env vars),
@@ -128,8 +135,8 @@ nginx) and add an `alerts` provider:
 
 A reply to the triage message, or to the alert, looks up the alert by
 `reply_to_message_id` and **resumes that alert's session** with write tools. Kevin
-says "do option 2", and it runs with full context. Optionally, inline buttons for
-the offered options.
+says "do option 2", and it runs with full context. **Both input styles (decided 2026-09-24):**
+inline buttons for the offered options, plus a typed reply for a custom instruction.
 
 - Ask-first actions stay ask-first. The reply *is* the approval, but only for the
   action it names.
@@ -158,13 +165,20 @@ Always ask:    anything else
 - Docs: each promoted job's runbook, plus a table here of which jobs are
   auto-heal enabled.
 
-## Open questions for Kevin
+## Decisions (Kevin, 2026-09-24)
 
-- Phase 4: inline buttons, free-text replies, or both?
-- The triage cost cap per day.
-- Which jobs are the first Phase 5 candidates? `sync-email-metrics-to-notion` and
-  `threads-sync` look like the best fit (read-mostly, retries are safe).
-- **Who watches Bolt?** If the bot is down, alerts still arrive (they're plain Bot
-  API calls) but nothing triages them. A tiny cron check on
-  `systemctl is-active claude-telegram-bot` that alerts via the Bot API would
-  cover it.
+- **Phase 4 input:** buttons for the offered options, plus a typed reply for a custom fix.
+- **Triage budget:** $5/day API-equivalent, and pause at ≥ 70% plan utilization (Phase 3).
+- **First Phase 5 jobs:** `sync-email-metrics-to-notion` and `threads-sync`. They're
+  read-mostly, retries are safe, and they run often. Anything that sends email or writes
+  GHL contacts stays ask-only.
+- **Who watches Bolt:** `scripts/bolt-watchdog.sh`, see below.
+
+## Bolt watchdog ✅ (2026-09-24)
+
+`scripts/bolt-watchdog.sh`, run from cron every 5 minutes. It alerts through the Bot API
+directly, so it works while the bot process is down. It pings after 2 consecutive failed
+checks (so 10 minutes, which skips blips that systemd's `Restart=on-failure` already
+fixes), sends a reminder every hour while the bot stays down, and sends one "recovered"
+message. It also flags a crash loop (≥ 3 restarts between checks). It only alerts and
+never restarts the bot: restarting live infra stays Kevin's call.
