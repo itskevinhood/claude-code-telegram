@@ -148,3 +148,5 @@ backups/
 uploads/
 config/mcp.json
 package-lock.json
+# Runtime state (sdk-bump-check)
+state/
