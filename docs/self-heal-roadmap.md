@@ -1,6 +1,6 @@
 # Self-heal roadmap — alerts Bolt can read, triage, and fix
 
-**Status:** Phase 0 and 1 shipped, plus the watchdog; Phase 2 is next. Written 2026-09-24.
+**Status:** Phases 0–2 shipped, plus the watchdog; Phase 3 is next (switch to high effort first). Written 2026-09-24.
 
 **Goal:** every error that reaches Bolt gets diagnosed. If it can be fixed safely
 without Kevin, Bolt fixes it and reports what it did. If it can't, Bolt posts
@@ -66,7 +66,12 @@ alert and Bolt investigates with the alert in hand. No notifier changes needed.
 - Deploy: bot restart (Kevin says go).
 - Docs: one line in this repo's `CONTEXT.md` ("reply to an alert to triage it").
 
-### Phase 2 — One alert contract, one sender
+### Phase 2 — One alert contract, one sender ✅ (2026-09-24)
+
+Shipped as `~/bin/bolt-alert` + `~/docs/conventions/alerts.md`. Every sender in the
+inventory below now calls it; no job loads a Telegram token. `fathom-to-notion` goes
+live on its next service restart. History is kept in `~/state/alerts.jsonl`. The design
+below is kept for reference; where it differs, the convention doc is the source of truth.
 
 Replace the per-job notifier copies with one shared sender (a Python module plus a
 thin bash wrapper). Every alert becomes a structured event:
@@ -99,6 +104,9 @@ their own `.env`.
   `feedback_shared_bolt_token` memory is updated to match.
 
 ### Phase 3 — Triage: alert in, diagnosis out
+
+> ⚠️ **Before starting Phase 3: remind Kevin to switch the Claude session to high effort**
+> (Phases 0–2 ran at medium). Kevin asked for this reminder on 2026-09-24.
 
 Turn on the bot's API server (bound to 127.0.0.1, Bearer secret, never exposed via
 nginx) and add an `alerts` provider:
