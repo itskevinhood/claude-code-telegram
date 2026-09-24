@@ -29,6 +29,7 @@ alert channel every other job on this box reports failures to. Runs as the
 | Local dev, tests, linting | `docs/development.md` |
 | Change the bot's model / effort | `CLAUDE_MODEL` / `CLAUDE_EFFORT` in `.env` (Kevin sets it; see `.env.example`). Unset = the bundled CLI's default. The bot ignores `~/.claude/settings.json` |
 | Update the SDK / bundled Claude Code CLI | automatic weekly check (`scripts/`), then `tools/deploy-sdk.sh` once Kevin says go |
+| Make alerts triage / self-heal | `docs/self-heal-roadmap.md` — phased plan, alert-sender inventory |
 | Why an alert didn't arrive | this bot is the alert *channel*; check the sending job's log first |
 
 ## 🚫 Don't
