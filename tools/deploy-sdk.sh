@@ -11,11 +11,12 @@ REPO=/home/ubuntu/claude-code-telegram
 LIVE_VENV=/home/ubuntu/.cache/pypoetry/virtualenvs/claude-code-telegram-ny9yruGr-py3.11
 SERVICE=claude-telegram-bot
 
-BOLT_ENV="/home/ubuntu/.config/bolt/telegram.env"
-[ -r "$BOLT_ENV" ] && { set -a; . "$BOLT_ENV"; set +a; }
+# notify SEVERITY SUMMARY [DETAILS] [EMOJI] — via ~/bin/bolt-alert (docs/conventions/alerts.md).
+# MONITOR_DRY_RUN=1 is honored by bolt-alert itself.
 notify() {
-  curl -fsS -m 15 "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN:-}/sendMessage" \
-    --data-urlencode "chat_id=${TELEGRAM_CHAT_ID:-}" --data-urlencode "text=$1" >/dev/null || true
+  /home/ubuntu/bin/bolt-alert --job claude-code-telegram --severity "$1" --summary "$2" \
+    --log "/home/ubuntu/claude-code-telegram/state/sdk-bump-check.log" ${3:+--details "$3"} ${4:+--emoji "$4"} \
+    || echo "$(date -Is) bolt-alert failed" >&2
 }
 live_version() { "$LIVE_VENV/bin/python" -c 'import importlib.metadata as m;print(m.version("claude-agent-sdk"))'; }
 
@@ -24,9 +25,9 @@ if [ "${1:-}" = "--restart" ]; then
   sudo systemctl restart "$SERVICE"
   sleep 20
   if systemctl is-active -q "$SERVICE"; then
-    notify "✅ Bolt restarted on claude-agent-sdk $(live_version). Send /new first — a resumed session keeps the model it started on — then ask 'what model are you?'."
+    notify info "Bolt restarted on claude-agent-sdk $(live_version)" "Send /new first (a resumed session keeps the model it started on), then ask 'what model are you?'." ✅
   else
-    notify "❌ Bolt failed to come back after the SDK deploy. Check: journalctl -u $SERVICE -n 50"
+    notify error "Bolt failed to come back after the SDK deploy" "Check: journalctl -u $SERVICE -n 50"
   fi
   exit 0
 fi

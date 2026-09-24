@@ -21,18 +21,17 @@ mkdir -p "$STATE"
 exec >>"$LOG" 2>&1
 echo "=== $(date -Is) sdk-bump-check"
 
-BOLT_ENV="/home/ubuntu/.config/bolt/telegram.env"
-[ -r "$BOLT_ENV" ] && { set -a; . "$BOLT_ENV"; set +a; }
+# notify SEVERITY SUMMARY [DETAILS] [EMOJI] — via ~/bin/bolt-alert (docs/conventions/alerts.md).
+# MONITOR_DRY_RUN=1 is honored by bolt-alert itself.
 notify() {
-  if [ "${MONITOR_DRY_RUN:-}" = "1" ]; then echo "[DRY RUN] would send: $1"; return; fi
-  curl -fsS -m 15 "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN:-}/sendMessage" \
-    --data-urlencode "chat_id=${TELEGRAM_CHAT_ID:-}" --data-urlencode "text=$1" >/dev/null \
-    || echo "telegram send failed"
+  /home/ubuntu/bin/bolt-alert --job claude-code-telegram --severity "$1" --summary "$2" \
+    --log "$LOG" ${3:+--details "$3"} ${4:+--emoji "$4"} \
+    || echo "$(date -Is) bolt-alert failed" >&2
 }
 
 cd "$REPO" || exit 1
 # Cron's PATH resolves python3 to the system 3.10; pin poetry to its 3.11 env.
-poetry env use -q /usr/bin/python3.11 || { notify "⚠️ sdk-bump-check: poetry env unavailable. Log: $LOG"; exit 1; }
+poetry env use -q /usr/bin/python3.11 || { notify warn "SDK check: poetry env unavailable"; exit 1; }
 PY="$(poetry env info -p)/bin/python"
 locked() { "$PY" -c 'import tomllib;print(next(p["version"] for p in tomllib.load(open("poetry.lock","rb"))["package"] if p["name"]=="claude-agent-sdk"))'; }
 
@@ -41,27 +40,27 @@ LATEST="${SDK_TARGET:-$(curl -fsS -m 30 https://pypi.org/pypi/claude-agent-sdk/j
 LIVE="$("$LIVE_VENV/bin/python" -c 'import importlib.metadata as m;print(m.version("claude-agent-sdk"))')"
 LOCKED="$(locked)"
 echo "latest=$LATEST locked=$LOCKED live=$LIVE"
-[ -n "$LATEST" ] || { notify "⚠️ sdk-bump-check: couldn't read PyPI. Log: $LOG"; exit 1; }
+[ -n "$LATEST" ] || { notify warn "SDK check: couldn't read PyPI"; exit 1; }
 
 if [ "$LATEST" = "$LIVE" ]; then echo "up to date"; exit 0; fi
 if [ "$(cat "$NOTIFIED" 2>/dev/null)" = "$LATEST" ]; then echo "already notified about $LATEST"; exit 0; fi
 
 if [ "$LATEST" = "$LOCKED" ]; then
-  notify "🔄 Bolt SDK $LATEST is committed on main but not deployed (live: $LIVE). To deploy, ask Claude to run ~/claude-code-telegram/tools/deploy-sdk.sh"
+  notify info "Bolt SDK $LATEST is committed on main but not deployed (live: $LIVE)" "To deploy (restarts Bolt), ask Claude to run ~/claude-code-telegram/tools/deploy-sdk.sh" 🔄
   echo "$LATEST" >"$NOTIFIED"; exit 0
 fi
 
 # --- Bump path: needs a clean main so the commit contains only the bump.
 if [ -n "$(git status --porcelain)" ] || [ "$(git branch --show-current)" != main ]; then
-  notify "⚠️ sdk-bump-check: claude-agent-sdk $LATEST is out, but ~/claude-code-telegram isn't a clean main checkout, so I skipped testing it."
+  notify warn "SDK check skipped: claude-agent-sdk $LATEST is out, but ~/claude-code-telegram isn't a clean main checkout"
   exit 1
 fi
-git pull -q --ff-only || { notify "⚠️ sdk-bump-check: git pull failed. Log: $LOG"; exit 1; }
+git pull -q --ff-only || { notify warn "SDK check: git pull failed"; exit 1; }
 
 revert() { git checkout -q -- pyproject.toml poetry.lock; poetry install -q --no-root; }
 fail() {
   echo "FAILED: $1"; revert
-  notify "❌ claude-agent-sdk $LATEST failed the bot's checks ($1). Nothing changed; the bot stays on $LIVE. Log: $LOG"
+  notify warn "claude-agent-sdk $LATEST failed the bot's checks ($1)" "Nothing changed; the bot stays on $LIVE."
   echo "$LATEST" >"$NOTIFIED"; exit 1
 }
 
@@ -101,7 +100,7 @@ echo "smoke: $SMOKE"
 
 if [ "${SDK_DRY_RUN:-}" = "1" ]; then
   echo "SDK_DRY_RUN: reverting instead of committing"; revert
-  notify "[dry run] claude-agent-sdk $LATEST (Claude Code $CLI) passed: $TESTS; default model $SMOKE"
+  notify info "[dry run] claude-agent-sdk $LATEST (Claude Code $CLI) passed" "$TESTS; default model $SMOKE"
   exit 0
 fi
 
@@ -110,7 +109,8 @@ git commit -q -m "chore: bump claude-agent-sdk to $LATEST
 Automated by scripts/sdk-bump-check.sh: bundled Claude Code $CLI, SDK
 internals present, $TESTS, live smoke query ok (default model $SMOKE)." \
   -- pyproject.toml poetry.lock || fail "git commit"
-git push -q origin main || { notify "⚠️ sdk-bump-check: committed $LATEST locally but push failed. Log: $LOG"; exit 1; }
+git push -q origin main || { notify warn "SDK check: committed $LATEST locally but push failed"; exit 1; }
 
-notify "✅ Bolt SDK update ready: claude-agent-sdk $LIVE → $LATEST (Claude Code $CLI). $TESTS; default model is $SMOKE. Committed $(git rev-parse --short HEAD) to main. To deploy (restarts Bolt), ask Claude to run ~/claude-code-telegram/tools/deploy-sdk.sh"
+notify info "Bolt SDK update ready: claude-agent-sdk $LIVE → $LATEST (Claude Code $CLI)" "$TESTS; default model is $SMOKE. Committed $(git rev-parse --short HEAD) to main.
+To deploy (restarts Bolt), ask Claude to run ~/claude-code-telegram/tools/deploy-sdk.sh" ✅
 echo "$LATEST" >"$NOTIFIED"

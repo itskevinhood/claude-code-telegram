@@ -15,13 +15,12 @@ LAST_ALERT="$STATE/watchdog-last-alert"      # epoch of last down alert; absent 
 LAST_RESTARTS="$STATE/watchdog-restarts"
 mkdir -p "$STATE"
 
-BOLT_ENV="/home/ubuntu/.config/bolt/telegram.env"
-[ -r "$BOLT_ENV" ] && { set -a; . "$BOLT_ENV"; set +a; }
+# notify SEVERITY SUMMARY [DETAILS] [EMOJI] — via ~/bin/bolt-alert (docs/conventions/alerts.md).
+# MONITOR_DRY_RUN=1 is honored by bolt-alert itself.
 notify() {
-  if [ "${MONITOR_DRY_RUN:-}" = "1" ]; then echo "[DRY RUN] would send: $1"; return; fi
-  curl -fsS -m 15 "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN:-}/sendMessage" \
-    --data-urlencode "chat_id=${TELEGRAM_CHAT_ID:-}" --data-urlencode "text=$1" >/dev/null \
-    || echo "$(date -Is) bolt-watchdog: telegram send failed" >&2
+  /home/ubuntu/bin/bolt-alert --job claude-code-telegram --severity "$1" --summary "$2" \
+    ${3:+--details "$3"} ${4:+--emoji "$4"} \
+    || echo "$(date -Is) bolt-alert failed" >&2
 }
 
 now=$(date +%s)
@@ -31,13 +30,13 @@ if [ "$state" = active ]; then
   echo 0 >"$DOWN_COUNT"
   if [ -f "$LAST_ALERT" ]; then
     rm -f "$LAST_ALERT"
-    notify "✅ Bolt is back up."
+    notify info "Bolt is back up" "" ✅
   fi
   restarts=$(systemctl show "$SERVICE" -p NRestarts --value)
   prev=$(cat "$LAST_RESTARTS" 2>/dev/null || echo "$restarts")
   echo "$restarts" >"$LAST_RESTARTS"
   if [ $((restarts - prev)) -ge 3 ]; then
-    notify "⚠️ Bolt is crash-looping: $((restarts - prev)) restarts in the last 5 min. Check: journalctl -u $SERVICE -n 50"
+    notify error "Bolt is crash-looping: $((restarts - prev)) restarts in the last 5 min" "Check: journalctl -u $SERVICE -n 50"
   fi
   exit 0
 fi
@@ -49,5 +48,7 @@ echo "$count" >"$DOWN_COUNT"
 last=$(cat "$LAST_ALERT" 2>/dev/null || echo 0)
 if [ $((now - last)) -ge 3600 ]; then
   echo "$now" >"$LAST_ALERT"
-  notify "🔴 Bolt is down ($SERVICE: $state for ~$((count * 5)) min). Alerts still arrive, but nothing can answer them. Check: journalctl -u $SERVICE -n 50 — restart: sudo systemctl restart $SERVICE"
+  notify error "Bolt is down ($SERVICE: $state for ~$((count * 5)) min)" "Alerts still arrive, but nothing can answer them.
+Check: journalctl -u $SERVICE -n 50
+Restart: sudo systemctl restart $SERVICE"
 fi
